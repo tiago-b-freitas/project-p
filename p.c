@@ -1,141 +1,366 @@
+// https://gamemath.com/book/
+// https://natureofcode.com/
+// https://mathfor3dgameprogramming.com/
 #include <stdio.h>
-#include <raylib.h>
-
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
-#define BACKGROUND (Color){ 0x13, 0x13, 0x13, 0xFF }
-#define CAMERA_SPEED 1.1f
-#define ZOOM_SPEED 0.1f
-#define DEFAULT_ZOOM 3.0f
-#define MIN_X -10.0f*(DEFAULT_ZOOM)
-#define MAX_X -(MIN_X)
-#define MIN_Y -10.0f*(DEFAULT_ZOOM)
-#define MAX_Y -(MIN_Y)
-#define DEFAULT_STEP 30.0f
-#define TICK_STEP 1.0f
-#define TICK_SIZE 5.0f
-#define RESOLUTION 500.0f
+#include <raylib.h>
+#include <raymath.h>
 
-typedef struct {
-    float zoom;
-    Vector2 offset;
-} PCamera;
+#include "base.h"
+#include "parser.c"
 
-#define cartesian_to_screen(x, y, cartesian, offset_x, offset_y) (Vector2){ \
- ((x)-(offset_x))*(cartesian.x_scale) + (cartesian.center_screen_x), \
- -(((y)-(offset_y))*(cartesian.y_scale)) + (cartesian.center_screen_y)  \
+#define DEFAULT_CAP_DA 8
+#define da_init(array)                                  \
+do {                                                    \
+    (array).items = malloc(sizeof(array)*DEFAULT_CAP_DA); \
+    (array).count = 0;                                    \
+    (array).capacity = DEFAULT_CAP_DA;                    \
+} while (0);                                            \
+
+#define _da_free(array) \
+do {                   \
+    free((array).items); \
+} while (0);           \
+
+#define da_push(array, el)                                                  \
+do {                                                                        \
+    if ((array).count + 1 == (array).capacity) {                            \
+        (array).capacity = (size_t) ((array).capacity * 1.5f);                \
+        (array).items = realloc(((array).items), sizeof(array)*(array).capacity); \
+    }                                                                       \
+    (array).items[(array).count++] = el;                                    \
+} while (0);                                                                \
+
+static inline Vec2 vec_add(Vec2 v0, Vec2 v1, Color color)
+{
+    Vector2 v_end_pos = Vector2Add(vec2_endpoints(v0), vec2_endpoints(v1));
+    Vector2 v_start_pos = Vector2Add(v0.start_pos, v1.start_pos);
+    Vector2 diff = Vector2Subtract(v_end_pos, v_start_pos);
+    return (Vec2) {
+        .start_pos = v_start_pos,
+        .dir       = atan2f(diff.y, diff.x),
+        .size      = sqrtf(diff.x*diff.x+diff.y*diff.y),
+        .color     = color
+    };
 }
 
-typedef struct {
-    int center_screen_x;
-    int center_screen_y;
-    float x_scale;
-    float y_scale;
-} Cartesian;
+static inline Vec2 vec_sub(Vec2 v0, Vec2 v1, Color color)
+{
+    v1.dir += PI;
+    return vec_add(v0, v1, color);
+
+}
+
+/* void parse_input(char input_chars[], Vectors *v_ar) */
+/* { */
+/*     char c = input_chars[0]; */
+/*     char buf[10] = {0}; */
+/*     size_t j = 0; */
+/*     size_t i = 0; */
+/*     size_t m = 0; */
+/*     float ar[4] = {0}; */
+/*     while (c != '\0' && i < MAX_INPUT_CHARS) { */
+/*         while (c != ' ' && c != '\0') { */
+/*             buf[j++] = c; */
+/*             i++; */
+/*             c = input_chars[i]; */
+/*         } */ 
+/*         j = 0; */
+/*         i++; */
+/*         c = input_chars[i]; */
+/*         ar[m++] = atof(buf); */
+/*         buf[0] = '\0'; */
+/*     } */
+/*     Vec2 v = new_vector((Vector2) { ar[0], ar[1] }, ar[2],  ar[3], MAROON); */
+/*     da_push((*v_ar), v); */
+/* } */
+
+
+static void user_interface_input(Engine *engine)
+{
+    if (!engine->is_inputting) {
+        if (IsKeyPressed(KEY_S)) {
+            engine->subgrid = !engine->subgrid;
+        }
+        if (IsKeyPressed(KEY_G)) {
+            engine->grid = !engine->grid;
+        }
+        if (IsKeyDown(KEY_EQUAL)) {
+            if (engine->camera.zoom < MAX_ZOOM) engine->camera.zoom += ZOOM_SPEED;
+        }
+        if (IsKeyDown(KEY_MINUS)) {
+            if (engine->camera.zoom > 1.0f) engine->camera.zoom -= ZOOM_SPEED;
+        }
+        if (IsKeyPressed(KEY_H)) {
+            engine->camera.offset.x -= CAMERA_SPEED;
+        }
+        if (IsKeyDown(KEY_L)) {
+            engine->camera.offset.x += CAMERA_SPEED;
+        }
+        if (IsKeyDown(KEY_K)) {
+            engine->camera.offset.y += CAMERA_SPEED;
+        }
+        if (IsKeyDown(KEY_J)) {
+            engine->camera.offset.y -= CAMERA_SPEED;
+        }
+        if (IsKeyPressed(KEY_HOME)) {
+            engine->camera.offset = (Vector2){0};
+            engine->camera.zoom = DEFAULT_ZOOM;
+        }
+        if (IsKeyPressed(KEY_SPACE)) {
+            engine->is_running = !engine->is_running;
+        }
+        if (IsKeyPressed(KEY_R)) {
+            engine->time = 0.0f;
+            engine->is_running = false;
+        }
+    }
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        Vector2 delta = GetMouseDelta();
+        delta = Vector2Scale(delta, 0.030f/engine->camera.zoom);
+        delta.x = -delta.x;
+        engine->camera.offset = Vector2Add(engine->camera.offset, delta);
+    }
+    if (engine->camera.zoom < 1.0f) engine->camera.zoom = 1.0f;
+
+    float mouse_wheel;
+    if ((mouse_wheel = GetMouseWheelMove()) != 0.0f) {
+        Vector2 mouse_pos_before = screen_to_cartesian(GetMousePosition(), engine->cart, engine->camera);
+        if (mouse_wheel > 0.0f && engine->camera.zoom < MAX_ZOOM) {
+            engine->camera.zoom += (ZOOM_SPEED*5);
+        } else if (mouse_wheel < 0.0f && engine->camera.zoom > 1.0f) {
+            engine->camera.zoom -= (ZOOM_SPEED*5);
+        }
+        engine->cart.x_scale = engine->camera.zoom*DEFAULT_STEP;
+        engine->cart.y_scale = engine->camera.zoom*DEFAULT_STEP;
+        Vector2 mouse_pos_after = screen_to_cartesian(GetMousePosition(), engine->cart, engine->camera);
+
+        Vector2 diff = Vector2Subtract(mouse_pos_before, mouse_pos_after);
+        engine->camera.offset = Vector2Add(engine->camera.offset, diff);
+    }
+
+    if (engine->is_mouse_on_input) {
+        SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            engine->is_inputting = true;
+        }
+    } else {
+        SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            engine->is_inputting = false;
+            if (engine->input_count == 0) {
+                strcpy(engine->input_chars, engine->default_input_str);
+            }
+        }
+    }
+
+    if (engine->is_inputting) {
+        SetMouseCursor(MOUSE_CURSOR_IBEAM);
+        int key = GetCharPressed();
+        while (key > 0) {
+            if (engine->input_count < MAX_INPUT_CHARS) {
+                engine->input_chars[engine->input_count] = (char)key;
+                engine->input_chars[engine->input_count+1] = '\0';
+                engine->input_count++;
+            }
+            key = GetCharPressed();
+        }
+        if (IsKeyPressed(KEY_BACKSPACE)) {
+            if (engine->input_count > 0) {
+                engine->input_chars[engine->input_count-1] = '\0';
+                engine->input_count--;
+            }
+        }
+        if (IsKeyPressed(KEY_ENTER)) {
+            parse_input(engine);
+            engine->input_count = 0;
+            engine->input_chars[engine->input_count] = '\0';
+        }
+    }
+}
+
+
+static void draw_grid(Engine engine)
+{
+    // x-axis and y-axis
+    int pos_y = y_to_screen(0, engine.cart, engine.camera.offset.y);
+    int pos_x = x_to_screen(0, engine.cart, engine.camera.offset.x);
+
+    if (engine.subgrid) {
+        for (int x = engine.cart.min_x; x <= engine.cart.max_x; ++x) {
+            int pos_x = x_to_screen(x, engine.cart, engine.camera.offset.x);
+            for (float sub_x = x+SUBTICK_SIZE; sub_x < x+1.0f; sub_x += SUBTICK_SIZE) {
+                int pos_x = x_to_screen(sub_x, engine.cart, engine.camera.offset.x);
+                DrawLine(pos_x, 0, pos_x, engine.cart.screen_height, AXIS_SUBMINOR_COLOR);
+            }
+            DrawLine(pos_x, 0, pos_x, engine.cart.screen_height, AXIS_MINOR_COLOR);
+        }
+        for (int y = engine.cart.min_y; y <= engine.cart.max_y; y += 1.0f) {
+            int pos_y = y_to_screen(y, engine.cart, engine.camera.offset.y);
+            for (float sub_y = y+SUBTICK_SIZE; sub_y < y+1.0f; sub_y += SUBTICK_SIZE) {
+                int pos_y = y_to_screen(sub_y, engine.cart, engine.camera.offset.y);
+                DrawLine(0, pos_y, engine.cart.screen_height, pos_y, AXIS_SUBMINOR_COLOR);
+            }
+            DrawLine(0, pos_y, engine.cart.screen_width, pos_y, AXIS_MINOR_COLOR);
+        }
+    }
+
+    if (engine.grid) {
+        DrawLine(0, pos_y, engine.cart.screen_width, pos_y, AXIS_MAJOR_COLOR);
+        DrawLine(pos_x, 0, pos_x, engine.cart.screen_height, AXIS_MAJOR_COLOR);
+
+        for (int x = engine.cart.min_x; x <= engine.cart.max_x; ++x) {
+            int pos_x = x_to_screen(x, engine.cart, engine.camera.offset.x);
+            if (engine.grid)
+                DrawText(TextFormat("%d", (int)x), pos_x+TICK_GAP, pos_y+TICK_GAP, TICK_LABEL_SIZE, AXIS_MAJOR_COLOR);
+        }
+
+        for (int y = engine.cart.min_y; y <= engine.cart.max_y; y += 1.0f) {
+            int pos_y = y_to_screen(y, engine.cart, engine.camera.offset.y);
+            if (engine.grid)
+                DrawText(TextFormat("%d", y), pos_x+TICK_GAP, pos_y+TICK_GAP, TICK_LABEL_SIZE, AXIS_MAJOR_COLOR);
+        }
+    }
+
+}
+
 
 int main(void)
 {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 800, "p");
-    SetTargetFPS(30);
+    InitWindow(1000, 1000, "p");
+    SetTargetFPS(60);
 
-    PCamera camera = {0};
-    camera.zoom = DEFAULT_ZOOM;
+    Vectors v_ar = {0};
+    da_init(v_ar);
 
-    while (!WindowShouldClose()) {
-        const int screen_width  = GetScreenWidth();
-        const int screen_height = GetScreenHeight();
-        const Cartesian cartesian = {
-            .center_screen_x = screen_width/2,
-            .center_screen_y = screen_height/2,
-            .x_scale = camera.zoom*DEFAULT_STEP,
-            .y_scale = camera.zoom*DEFAULT_STEP
-        };
-        if (IsKeyPressed(KEY_Q)) {
+    Engine engine = (Engine) {
+        .is_running = false,
+        .time = 0.0f,
+        .subgrid = true,
+        .grid = true,
+        .is_inputting = false,
+        .is_mouse_on_input = false,
+        .input_count = 0,
+        .default_input_str = "Input...",
+        .v_ar = &v_ar,
+        .should_close = false
+    };
+    strcpy(engine.input_chars, engine.default_input_str);
+
+    engine.camera.old_zoom = DEFAULT_ZOOM;
+    engine.camera.zoom = DEFAULT_ZOOM;
+
+    /* Vec2 v0 = new_vector((Vector2) { 0, 0 }, sqrtf(50.0f),  PI/4.0f, GREEN); */
+    /* da_push(v_ar, v0); */
+    /* Vec2 v1 = new_vector((Vector2) { 0, 0 }, sqrtf(15.0f),  PI - PI/6.0f, RED); */
+    /* da_push(v_ar, v1); */
+    /* v_ar.items[v_ar.count-1].dir += PI; */
+    /* vec_move(&(v_ar.items[v_ar.count-1]), vec2_endpoints(v_ar.items[v_ar.count-2]), 3.0f); */
+
+    /* Vec2 v2 = vec_sub(v0, v1, RAYWHITE); */
+    /* da_push(v_ar, v2); */
+
+
+    while (!engine.should_close) {
+        engine.should_close = WindowShouldClose();
+        if (!engine.is_inputting && IsKeyPressed(KEY_Q)) {
             break;
         }
-        if (IsKeyDown(KEY_EQUAL)) {
-            camera.zoom += ZOOM_SPEED;
-        }
-        if (IsKeyDown(KEY_MINUS)) {
-            if (camera.zoom > 1.0f) camera.zoom -= ZOOM_SPEED;
-        }
-        if (IsKeyDown(KEY_H)) {
-            camera.offset.x += CAMERA_SPEED;
-        }
-        if (IsKeyDown(KEY_L)) {
-            camera.offset.x -= CAMERA_SPEED;
-        }
-        if (IsKeyDown(KEY_K)) {
-            camera.offset.y += CAMERA_SPEED;
-        }
-        if (IsKeyDown(KEY_J)) {
-            camera.offset.y -= CAMERA_SPEED;
-        }
-        if (IsKeyPressed(KEY_HOME)) {
-            camera.offset = (Vector2){0};
-            camera.zoom = DEFAULT_ZOOM;
-        }
-        if (camera.zoom < 1.0f) camera.zoom = 1.0f;
+        user_interface_input(&engine);
 
+        engine.cart.screen_width  = GetScreenWidth();
+        engine.cart.screen_height = GetScreenHeight();
+        engine.cart.center_screen_x = engine.cart.screen_width/2.0f;
+        engine.cart.center_screen_y = engine.cart.screen_height/2.0f;
+        const float raw_max_x = engine.cart.screen_width/DEFAULT_STEP;
+        const float raw_max_y = engine.cart.screen_height/DEFAULT_STEP;
+        engine.cart.x_scale = engine.camera.zoom*DEFAULT_STEP;
+        engine.cart.y_scale = engine.camera.zoom*DEFAULT_STEP;
+        engine.cart.max_x = engine.camera.offset.x+raw_max_x;
+        engine.cart.min_x = engine.camera.offset.x-raw_max_x;
+        engine.cart.max_y = engine.camera.offset.y+raw_max_y;
+        engine.cart.min_y = engine.camera.offset.y-raw_max_y;
+
+        Rectangle input_box = { 10, engine.cart.screen_height - 45, engine.cart.screen_width - 20, 40 };
+
+        if (CheckCollisionPointRec(GetMousePosition(), input_box)) engine.is_mouse_on_input = true;
+        else engine.is_mouse_on_input = false;
+
+
+        if (engine.is_running) {
+            engine.time += GetFrameTime();
+            /* v_ar.items[0].dir += 0.01f; */
+            // v1.dir += 0.05f;
+            /* v_ar.items[2] = vec_add(v_ar.items[0], v_ar.items[1], RAYWHITE); */
+            for (size_t i = 0; i < v_ar.count; ++i) {
+                if (v_ar.items[i].time_move <= 0.0f) {
+                    v_ar.items[i].is_moving = false;
+                }
+                if (v_ar.items[i].is_moving) {
+                    float frame_time = GetFrameTime();
+                    v_ar.items[i].time_move -= frame_time;
+                    v_ar.items[i].start_pos = Vector2Add(v_ar.items[i].start_pos, Vector2Scale(v_ar.items[i].move_increment, frame_time));
+                }
+            }
+        }
 
         BeginDrawing();
 
             ClearBackground(BACKGROUND);
+            draw_grid(engine);
 
-            
-            float max_x = (screen_width/DEFAULT_STEP)+camera.offset.x;
-            float min_x = -(screen_width/DEFAULT_STEP)+camera.offset.x;
 
-            float max_y = (screen_height/DEFAULT_STEP)+camera.offset.y;
-            float min_y = -(screen_height/DEFAULT_STEP)+camera.offset.y;
-
-            {
-                Vector2 start_pos = cartesian_to_screen(min_x, 0, cartesian, camera.offset.x, camera.offset.y);
-                Vector2 end_pos   = cartesian_to_screen(max_x, 0, cartesian, camera.offset.x, camera.offset.y);
-                DrawLineV(start_pos, end_pos, RAYWHITE);
-                for (int x = min_x; x <= max_x; x += 1.0f) {
-                    Vector2 pos = cartesian_to_screen(x, 0, cartesian, camera.offset.x, camera.offset.y);
-                    DrawText(TextFormat("%d", x), (int)pos.x, (int)pos.y, 5, RAYWHITE);
+            if (1)
+            { // vectors
+                for (size_t i = 0; i < v_ar.count; ++i) {
+                    draw_vector(v_ar.items[i], engine.cart, engine.camera); 
                 }
             }
-            {
-                Vector2 start_pos = cartesian_to_screen(0, min_y, cartesian, camera.offset.x, camera.offset.y);
-                Vector2 end_pos   = cartesian_to_screen(0, max_y, cartesian, camera.offset.x, camera.offset.y);
-                DrawLineV(start_pos, end_pos, RAYWHITE);
-                for (int y = min_y; y <= max_y; y += 1.0f) {
-                    Vector2 pos = cartesian_to_screen(0, y, cartesian, camera.offset.x, camera.offset.y);
-                    DrawText(TextFormat("%d", y), (int)pos.x, (int)pos.y, 5, RAYWHITE);
-                }
-            }
-            {
-                const float inc = (float)((max_x-min_x)/(RESOLUTION*sqrtf(camera.zoom)));
 
-                for (float x = min_x; x <= max_x; x += inc) {
-                    float y = sinf(x);
-                    Vector2 pos = cartesian_to_screen(x, y, cartesian, camera.offset.x, camera.offset.y);
+            if (0)
+            { // functions
+                const float inc = 1.5f * ((engine.cart.max_x-engine.cart.min_x)/(RESOLUTION*engine.camera.zoom));
+
+                for (float x = engine.cart.min_x; x <= engine.cart.max_x; x += inc) {
+                    float y = sinf(x-engine.time*3);
+                    Vector2 pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, RED);
 
                     y = x*x*x;
-                    pos = cartesian_to_screen(x, y, cartesian, camera.offset.x, camera.offset.y);
+                    pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, SKYBLUE);
 
                     y = -x;
-                    pos = cartesian_to_screen(x, y, cartesian, camera.offset.x, camera.offset.y);
+                    pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, LIME);
                 }
             }
 
-            DrawFPS(5, 5);
-            DrawText(TextFormat("zoom = %.1f", camera.zoom), GetScreenWidth()-85, 5, 16, RAYWHITE);
+            Vector2 mouse_pos = GetMousePosition();
+            Vector2 pos = screen_to_cartesian(mouse_pos, engine.cart, engine.camera);
+            DrawText(TextFormat("(%.1f, %.1f)", pos.x, pos.y), mouse_pos.x, mouse_pos.y-30, 18, RAYWHITE);
+
+            // DrawFPS(5, 5);
+            DrawText(TextFormat("zoom = %.1f", engine.camera.zoom), engine.cart.screen_width-85, 5, 16, RAYWHITE);
+
+            DrawText(TextFormat("time = %.2fs", engine.time), 10, 5, 16, RAYWHITE);
+
+            DrawRectangleRec(input_box, RAYWHITE);
+            Color input_text_color = GRAY;
+            if (engine.is_mouse_on_input) input_text_color = BLACK;
+            DrawText(engine.input_chars, (int)input_box.x+10, (int)input_box.y+input_box.height/2.0f-10, 20, input_text_color);
 
         EndDrawing();
     }
 
     CloseWindow();
+    // TODO free v_da
+    /* da_free(&(engine.v_ar)); */
 
     return 0;
 }
-
-// TODO
-// 1. ajuster a velocidade de zoom e de movimento de acordo com o nível de zoom. Quando maior o zoom maior a velocidade movimento e maior a aproximação para mais-zoom.
