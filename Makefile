@@ -1,16 +1,22 @@
-RAYLIB_PATH = $(HOME)/.local/lib/raylib
-# RAYLIB_PATH = ./raylib-6.0_linux_amd64
+RAYLIB_PATH = ./raylib-6.0_linux_amd64
 
-CFLAGS  = -ggdb -Wall -Wextra -I$(RAYLIB_PATH)/include
-LIBS = -L$(RAYLIB_PATH)/lib -l:libraylib.a -lm
+CFLAGS  = -O3 -ggdb -Wall -Wextra -I$(RAYLIB_PATH)/include
+LIBS = -L$(RAYLIB_PATH)/lib -l:libraylib.a -lm -lX11
+SIM = simulation01
 
 all: build/p
 
-build/p: p.c parser.c base.c
-	cc $(CFLAGS) -o build/p p.c base.c $(LIBS)
+build/p: p.c build/parser.o build/base.o build/vec.o $(SIM).o
+	cc $(CFLAGS) -o build/p p.c build/vec.o build/base.o build/parser.o $(SIM).o $(LIBS)
 
-build/base.o: base.h base.c
-	cc $(CFLAGS) -c -o build/base.o base.c $(LIBS)
+build/$(SIM).o: $(SIM).c simulation.h base.h
+	cc $(CFLAGS) -c -o build/$(SIM).o $(SIM).c
 
-# build/parser: parser.c
-# 	cc $(CFLAGS) -o build/parser parser.c $(LIBS)
+build/parser.o: parser.c parser.h base.h
+	cc $(CFLAGS) -c -o build/parser.o parser.c
+
+build/vec.o: vec.c vec.h base.h
+	cc $(CFLAGS) -c -o build/vec.o vec.c
+
+build/base.o: base.c base.h
+	cc $(CFLAGS) -c -o build/base.o base.c

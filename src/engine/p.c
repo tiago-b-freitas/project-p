@@ -10,74 +10,9 @@
 #include <raymath.h>
 
 #include "base.h"
-#include "parser.c"
-
-#define DEFAULT_CAP_DA 8
-#define da_init(array)                                  \
-do {                                                    \
-    (array).items = malloc(sizeof(array)*DEFAULT_CAP_DA); \
-    (array).count = 0;                                    \
-    (array).capacity = DEFAULT_CAP_DA;                    \
-} while (0);                                            \
-
-#define _da_free(array) \
-do {                   \
-    free((array).items); \
-} while (0);           \
-
-#define da_push(array, el)                                                  \
-do {                                                                        \
-    if ((array).count + 1 == (array).capacity) {                            \
-        (array).capacity = (size_t) ((array).capacity * 1.5f);                \
-        (array).items = realloc(((array).items), sizeof(array)*(array).capacity); \
-    }                                                                       \
-    (array).items[(array).count++] = el;                                    \
-} while (0);                                                                \
-
-static inline Vec2 vec_add(Vec2 v0, Vec2 v1, Color color)
-{
-    Vector2 v_end_pos = Vector2Add(vec2_endpoints(v0), vec2_endpoints(v1));
-    Vector2 v_start_pos = Vector2Add(v0.start_pos, v1.start_pos);
-    Vector2 diff = Vector2Subtract(v_end_pos, v_start_pos);
-    return (Vec2) {
-        .start_pos = v_start_pos,
-        .dir       = atan2f(diff.y, diff.x),
-        .size      = sqrtf(diff.x*diff.x+diff.y*diff.y),
-        .color     = color
-    };
-}
-
-static inline Vec2 vec_sub(Vec2 v0, Vec2 v1, Color color)
-{
-    v1.dir += PI;
-    return vec_add(v0, v1, color);
-
-}
-
-/* void parse_input(char input_chars[], Vectors *v_ar) */
-/* { */
-/*     char c = input_chars[0]; */
-/*     char buf[10] = {0}; */
-/*     size_t j = 0; */
-/*     size_t i = 0; */
-/*     size_t m = 0; */
-/*     float ar[4] = {0}; */
-/*     while (c != '\0' && i < MAX_INPUT_CHARS) { */
-/*         while (c != ' ' && c != '\0') { */
-/*             buf[j++] = c; */
-/*             i++; */
-/*             c = input_chars[i]; */
-/*         } */ 
-/*         j = 0; */
-/*         i++; */
-/*         c = input_chars[i]; */
-/*         ar[m++] = atof(buf); */
-/*         buf[0] = '\0'; */
-/*     } */
-/*     Vec2 v = new_vector((Vector2) { ar[0], ar[1] }, ar[2],  ar[3], MAROON); */
-/*     da_push((*v_ar), v); */
-/* } */
-
+#include "vec.h"
+#include "parser.h"
+#include "simulation.h"
 
 static void user_interface_input(Engine *engine)
 {
@@ -109,6 +44,8 @@ static void user_interface_input(Engine *engine)
         if (IsKeyPressed(KEY_HOME)) {
             engine->camera.offset = (Vector2){0};
             engine->camera.zoom = DEFAULT_ZOOM;
+            engine->time = 0.0f;
+            engine->time_speed = 1.0f;
         }
         if (IsKeyPressed(KEY_SPACE)) {
             engine->is_running = !engine->is_running;
@@ -116,6 +53,12 @@ static void user_interface_input(Engine *engine)
         if (IsKeyPressed(KEY_R)) {
             engine->time = 0.0f;
             engine->is_running = false;
+        }
+        if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_PERIOD)) {
+            engine->time_speed *= 2.0f;
+        }
+        if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_COMMA)) {
+            engine->time_speed /= 2.0f;
         }
     }
 
@@ -153,7 +96,7 @@ static void user_interface_input(Engine *engine)
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             engine->is_inputting = false;
             if (engine->input_count == 0) {
-                strcpy(engine->input_chars, engine->default_input_str);
+                strcpy(engine->input_chars, DEFAULT_INPUT_STR);
             }
         }
     }
@@ -236,35 +179,25 @@ int main(void)
     SetTargetFPS(60);
 
     Vectors v_ar = {0};
-    da_init(v_ar);
 
     Engine engine = (Engine) {
         .is_running = false,
         .time = 0.0f,
+        .time_speed = 1.0f,
         .subgrid = true,
         .grid = true,
         .is_inputting = false,
         .is_mouse_on_input = false,
         .input_count = 0,
-        .default_input_str = "Input...",
         .v_ar = &v_ar,
         .should_close = false
     };
-    strcpy(engine.input_chars, engine.default_input_str);
+    strcpy(engine.input_chars, DEFAULT_INPUT_STR);
 
     engine.camera.old_zoom = DEFAULT_ZOOM;
     engine.camera.zoom = DEFAULT_ZOOM;
 
-    /* Vec2 v0 = new_vector((Vector2) { 0, 0 }, sqrtf(50.0f),  PI/4.0f, GREEN); */
-    /* da_push(v_ar, v0); */
-    /* Vec2 v1 = new_vector((Vector2) { 0, 0 }, sqrtf(15.0f),  PI - PI/6.0f, RED); */
-    /* da_push(v_ar, v1); */
-    /* v_ar.items[v_ar.count-1].dir += PI; */
-    /* vec_move(&(v_ar.items[v_ar.count-1]), vec2_endpoints(v_ar.items[v_ar.count-2]), 3.0f); */
-
-    /* Vec2 v2 = vec_sub(v0, v1, RAYWHITE); */
-    /* da_push(v_ar, v2); */
-
+    simulation(&engine);
 
     while (!engine.should_close) {
         engine.should_close = WindowShouldClose();
@@ -293,8 +226,9 @@ int main(void)
 
 
         if (engine.is_running) {
-            engine.time += GetFrameTime();
-            /* v_ar.items[0].dir += 0.01f; */
+            engine.time += (GetFrameTime() * engine.time_speed);
+            v_ar.items[0].dir += 0.01f * engine.time_speed;
+            v_ar.items[0].end_pos = vec2_endpoints(v_ar.items[0]);
             // v1.dir += 0.05f;
             /* v_ar.items[2] = vec_add(v_ar.items[0], v_ar.items[1], RAYWHITE); */
             for (size_t i = 0; i < v_ar.count; ++i) {
@@ -318,7 +252,7 @@ int main(void)
             if (1)
             { // vectors
                 for (size_t i = 0; i < v_ar.count; ++i) {
-                    draw_vector(v_ar.items[i], engine.cart, engine.camera); 
+                    draw_vector(v_ar.items[i], &engine); 
                 }
             }
 
@@ -328,15 +262,15 @@ int main(void)
 
                 for (float x = engine.cart.min_x; x <= engine.cart.max_x; x += inc) {
                     float y = sinf(x-engine.time*3);
-                    Vector2 pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
+                    Vector2 pos = cartesian_to_screen((Vector2) { x, y }, &engine);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, RED);
 
                     y = x*x*x;
-                    pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
+                    pos = cartesian_to_screen((Vector2) { x, y }, &engine);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, SKYBLUE);
 
                     y = -x;
-                    pos = cartesian_to_screen((Vector2) { x, y }, engine.cart, engine.camera);
+                    pos = cartesian_to_screen((Vector2) { x, y }, &engine);
                     DrawRectangleV(pos, (Vector2) { 4.0f, 4.0f }, LIME);
                 }
             }
@@ -345,10 +279,28 @@ int main(void)
             Vector2 pos = screen_to_cartesian(mouse_pos, engine.cart, engine.camera);
             DrawText(TextFormat("(%.1f, %.1f)", pos.x, pos.y), mouse_pos.x, mouse_pos.y-30, 18, RAYWHITE);
 
+            for (size_t i = 0; i < engine.v_ar->count; ++i) {
+                Vec2 v = engine.v_ar->items[i];
+                Vector2 start_pos = cartesian_to_screen(v.start_pos, &engine);
+                Vector2 end_pos = cartesian_to_screen(v.end_pos, &engine);
+                int threshold = 30*engine.camera.zoom;
+                float pad = 0.0f;
+                Rectangle v_rec = (Rectangle) { 
+                    min(start_pos.x, end_pos.x) - pad,
+                    min(start_pos.y, end_pos.y) - pad,
+                    fabsf(end_pos.x - start_pos.x) + pad*2,
+                    fabsf(end_pos.y - start_pos.y) + pad*2 };
+                if (CheckCollisionPointLine(mouse_pos, start_pos, end_pos, threshold)) {
+                    DrawRectangleLinesEx(v_rec, 1.0f, v.color);
+                    break;
+                }
+            }
+
             // DrawFPS(5, 5);
             DrawText(TextFormat("zoom = %.1f", engine.camera.zoom), engine.cart.screen_width-85, 5, 16, RAYWHITE);
 
             DrawText(TextFormat("time = %.2fs", engine.time), 10, 5, 16, RAYWHITE);
+            DrawText(TextFormat("time speed = %.2fx", engine.time_speed), 200, 5, 16, RAYWHITE);
 
             DrawRectangleRec(input_box, RAYWHITE);
             Color input_text_color = GRAY;

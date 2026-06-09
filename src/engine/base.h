@@ -1,12 +1,12 @@
 #ifndef BASE_H
 #define BASE_H
 
-#include <stddef.h>
-#include <stdio.h>
-
 #include <raylib.h>
-#include <raymath.h>
 
+#define DEFAULT_INPUT_STR "Input..."
+
+#define P_EPSILON 0.001f
+#define MAX_SIZE_LABEL 20
 
 #define BACKGROUND (Color){ 0x13, 0x13, 0x13, 0xFF }
 #define AXIS_MAJOR_COLOR RAYWHITE
@@ -36,6 +36,9 @@
     (screen_to_y((pos.y), (cartesian), ((camera).offset)))                      \
 }
 
+#define max(l, r) ((l) > (r) ? (l) : (r))
+#define min(l, r) ((l) > (r) ? (r) : (l))
+
 typedef struct {
     float zoom;
     float old_zoom;
@@ -62,6 +65,7 @@ typedef struct {
 
 typedef struct {
     Vector2 start_pos;
+    Vector2 end_pos;
     float size;
     float dir;
     Color color;
@@ -69,6 +73,7 @@ typedef struct {
     Vector2 move_increment;
     Vector2 target_pos;
     float time_move;
+    char label[MAX_SIZE_LABEL+1];
 } Vec2;
 
 typedef struct {
@@ -80,6 +85,7 @@ typedef struct {
 typedef struct {
     bool is_running;
     float time;
+    float time_speed;
     bool subgrid;
     bool grid;
     bool is_inputting;
@@ -94,18 +100,8 @@ typedef struct {
 } Engine;
 
 void print_vector2(Vector2 v);
-
-Vector2 cartesian_to_screen(Vector2 pos, Cartesian cart, PCamera camera);
-
-void print_vec(Vec2 v);
-
-Vector2 vec2_endpoints(Vec2 v);
-
-Vec2 new_vector(Vector2 start_pos, float size, float dir, Color color);
-
-void vec_move(Vec2 *v, Vector2 target_pos, float time);
-
-void draw_vector(Vec2 v, Cartesian cart, PCamera camera);
+Vector2 cartesian_to_screen(Vector2 pos, Engine *engine);
+bool is_near(float f0, float f1);
 
 
 #endif // BASE_H
