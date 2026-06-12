@@ -1,5 +1,5 @@
-#ifndef BASE_H
-#define BASE_H
+#ifndef ENGINE_H
+#define ENGINE_H
 
 #include <raylib.h>
 
@@ -102,6 +102,15 @@ typedef struct {
 void print_vector2(Vector2 v);
 Vector2 cartesian_to_screen(Vector2 pos, Engine *engine);
 bool is_near(float f0, float f1);
+void simulation(Engine *engine);
+void app(void (*simulation)(Engine*));
+Vec2 new_vector(Vector2 start_pos, float size, float dir, Color color, const char *label);
+bool vec_is_equal(Vec2 v0, Vec2 v1);
+void print_vec(Vec2 v);
+Vector2 vec2_endpoints(Vec2 v);
+void vec_move(Vec2 *v, Vector2 target_pos, float time);
+void draw_vector(Vec2 v, Engine *engine);
+Vec2 vec_sub(Vec2 v0, Vec2 v1, Color color);
+Vec2 vec_add(Vec2 v0, Vec2 v1, Color color);
 
-
-#endif // BASE_H
+#endif // ENGINE_H

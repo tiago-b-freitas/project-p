@@ -2,7 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include <raymath.h>
-#include "vec.h"
+#include "engine.h"
 
 bool vec_is_equal(Vec2 v0, Vec2 v1)
 {

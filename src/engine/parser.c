@@ -12,8 +12,7 @@
 #define MAX_ARGS 10
 #define MAX_LABELS 10
 
-#include "parser.h"
-#include "vec.h"
+#include "engine.h"
 
 typedef struct {
    long kind;

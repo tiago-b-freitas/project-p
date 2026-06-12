@@ -1,22 +1,13 @@
-RAYLIB_PATH = ./raylib-6.0_linux_amd64
+RAYLIB_FOLDER = ./third-party/raylib-6.0_linux_amd64
+ENGINE_FOLDER = ./src/engine
 
-CFLAGS  = -O3 -ggdb -Wall -Wextra -I$(RAYLIB_PATH)/include
-LIBS = -L$(RAYLIB_PATH)/lib -l:libraylib.a -lm -lX11
-SIM = simulation01
+CFLAGS  = -O3 -ggdb -Wall -Wextra -I$(RAYLIB_FOLDER)/include
+LIBS = -L$(RAYLIB_FOLDER)/lib -l:libraylib.a -lm -lX11
 
-all: build/p
+all: build/simulation01 lib/engine.so
 
-build/p: p.c build/parser.o build/base.o build/vec.o $(SIM).o
-	cc $(CFLAGS) -o build/p p.c build/vec.o build/base.o build/parser.o $(SIM).o $(LIBS)
+build/simulation01: src/simulation01.c lib/engine.so
+	cc $(CFLAGS) -I./src/engine -o build/simulation01 src/simulation01.c  -L./lib -l:engine.so -Wl,-rpath=/home/tiago/Documents/programacao/project-p/lib/
 
-build/$(SIM).o: $(SIM).c simulation.h base.h
-	cc $(CFLAGS) -c -o build/$(SIM).o $(SIM).c
-
-build/parser.o: parser.c parser.h base.h
-	cc $(CFLAGS) -c -o build/parser.o parser.c
-
-build/vec.o: vec.c vec.h base.h
-	cc $(CFLAGS) -c -o build/vec.o vec.c
-
-build/base.o: base.c base.h
-	cc $(CFLAGS) -c -o build/base.o base.c
+lib/engine.so: src/engine/*.c src/engine/*.h
+	cc $(CFLAGS) -shared -o lib/engine.so $(ENGINE_FOLDER)/engine.c $(ENGINE_FOLDER)/base.c $(ENGINE_FOLDER)/vec.c $(ENGINE_FOLDER)/parser.c $(LIBS)

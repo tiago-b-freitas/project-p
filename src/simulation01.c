@@ -3,6 +3,10 @@
 
 #include "engine.h"
 
+#define NOB_STRIP_PREFIX
+#define NOB_IMPLEMENTATION
+#include "../src/engine/nob.h"
+
 void simulation(Engine *engine)
 {
     Vec2 v0 = new_vector((Vector2) { 0, 0 }, sqrtf(50.0f),  -PI/4.0f, GREEN, "v0");
@@ -13,7 +17,7 @@ void simulation(Engine *engine)
 
 int main()
 {
-    engine(simulation);
+    app(simulation);
     return 0;
 }
 

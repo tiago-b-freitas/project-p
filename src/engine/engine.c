@@ -9,10 +9,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#include "base.h"
-#include "vec.h"
+#include "engine.h"
 #include "parser.h"
-#include "simulation.h"
 
 static void user_interface_input(Engine *engine)
 {
@@ -172,7 +170,7 @@ static void draw_grid(Engine engine)
 }
 
 
-int main(void)
+void app(void (*simulation)(Engine*))
 {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(1000, 1000, "p");
@@ -314,5 +312,4 @@ int main(void)
     // TODO free v_da
     /* da_free(&(engine.v_ar)); */
 
-    return 0;
 }
