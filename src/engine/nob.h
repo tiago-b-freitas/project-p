@@ -2473,42 +2473,6 @@ NOBDEF bool nob_rename(const char *old_path, const char *new_path)
     return true;
 }
 
-NOBDEF bool nob_read_entire_file(const char *path, Nob_String_Builder *sb)
-{
-    bool result = true;
-
-    FILE *f = fopen(path, "rb");
-    size_t new_count = 0;
-    long long m = 0;
-    if (f == NULL)                 nob_return_defer(false);
-    if (fseek(f, 0, SEEK_END) < 0) nob_return_defer(false);
-#ifndef _WIN32
-    m = ftell(f);
-#else
-    m = _telli64(_fileno(f));
-#endif
-    if (m < 0)                     nob_return_defer(false);
-    if (fseek(f, 0, SEEK_SET) < 0) nob_return_defer(false);
-
-    new_count = sb->count + m;
-    if (new_count > sb->capacity) {
-        sb->items = NOB_DECLTYPE_CAST(sb->items)NOB_REALLOC(sb->items, new_count);
-        NOB_ASSERT(sb->items != NULL && "Buy more RAM lool!!");
-        sb->capacity = new_count;
-    }
-
-    fread(sb->items + sb->count, m, 1, f);
-    if (ferror(f)) {
-        // TODO: Afaik, ferror does not set errno. So the error reporting in defer is not correct in this case.
-        nob_return_defer(false);
-    }
-    sb->count = new_count;
-
-defer:
-    if (!result) nob_log(NOB_ERROR, "Could not read file %s: %s", path, strerror(errno));
-    if (f) fclose(f);
-    return result;
-}
 
 NOBDEF int nob_sb_appendf(Nob_String_Builder *sb, const char *fmt, ...)
 {

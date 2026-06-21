@@ -6,6 +6,7 @@
 #define DEFAULT_INPUT_STR "Input..."
 
 #define P_EPSILON 0.001f
+#define GRAVITY_CONSTANT 9.81f // m/s^2
 #define MAX_SIZE_LABEL 20
 
 #define BACKGROUND (Color){ 0x13, 0x13, 0x13, 0xFF }
@@ -82,6 +83,29 @@ typedef struct {
     size_t capacity;
 } Vectors;
 
+typedef enum {
+    CIRCLE,
+    SQUARE,
+} Object_Kind;
+
+typedef struct {
+    Object_Kind kind;
+    Vector2 pos;
+    Vector2 speed;
+    Vector2 velocity;
+    Vector2 original_pos;
+    Vector2 original_speed;
+    Vector2 original_velocity;
+    Color color;
+    float size;
+} Object;
+
+typedef struct {
+    Object *items;
+    size_t count;
+    size_t capacity;
+} Object_Ar;
+
 typedef struct {
     bool is_running;
     float time;
@@ -89,8 +113,11 @@ typedef struct {
     bool subgrid;
     bool grid;
     bool is_inputting;
+    bool gravity_on;
+    Object *obj_dragging;
     PCamera camera;
     Vectors *v_ar;
+    Object_Ar *v_obj;
     Cartesian cart;
     bool is_mouse_on_input;
     size_t input_count;

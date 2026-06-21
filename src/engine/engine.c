@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <assert.h>
 
 #include <raylib.h>
 #include <raymath.h>
@@ -27,7 +28,7 @@ static void user_interface_input(Engine *engine)
         if (IsKeyDown(KEY_MINUS)) {
             if (engine->camera.zoom > 1.0f) engine->camera.zoom -= ZOOM_SPEED;
         }
-        if (IsKeyPressed(KEY_H)) {
+        if (IsKeyDown(KEY_H)) {
             engine->camera.offset.x -= CAMERA_SPEED;
         }
         if (IsKeyDown(KEY_L)) {
@@ -51,6 +52,12 @@ static void user_interface_input(Engine *engine)
         if (IsKeyPressed(KEY_R)) {
             engine->time = 0.0f;
             engine->is_running = false;
+            for (size_t i = 0; i < engine->v_obj->count; ++i) {
+                Object *obj = &(engine->v_obj->items[i]);
+                obj->pos = obj->original_pos;
+                obj->speed = obj->original_speed;
+                obj->velocity = obj->original_velocity;
+            }
         }
         if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_PERIOD)) {
             engine->time_speed *= 2.0f;
@@ -60,11 +67,33 @@ static void user_interface_input(Engine *engine)
         }
     }
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-        Vector2 delta = GetMouseDelta();
-        delta = Vector2Scale(delta, 0.030f/engine->camera.zoom);
-        delta.x = -delta.x;
-        engine->camera.offset = Vector2Add(engine->camera.offset, delta);
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (engine->obj_dragging != NULL) {
+            Vector2 mouse_pos = GetMousePosition();
+            mouse_pos = screen_to_cartesian(mouse_pos, engine->cart, engine->camera);
+            Object *obj = engine->obj_dragging;
+            obj->velocity = Vector2Scale(Vector2Subtract(mouse_pos, obj->pos), 1.0f/1.3f);
+            print_vector2(obj->velocity);
+            engine->obj_dragging = NULL;
+            engine->is_running = true;
+        }
+    }
+    if (engine->obj_dragging == NULL && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        for (size_t i = 0; i < engine->v_obj->count; ++i) {
+            Object *obj = &(engine->v_obj->items[i]);
+            const float pad = 15.0f;
+            Vector2 pos = cartesian_to_screen(obj->pos, engine);
+            if (CheckCollisionPointCircle(GetMousePosition(), pos,  obj->size+pad*2)) {
+                engine->obj_dragging = obj;
+                break;
+            }
+        }
+        if (engine->obj_dragging == NULL) {
+            Vector2 delta = GetMouseDelta();
+            delta = Vector2Scale(delta, 0.030f/engine->camera.zoom);
+            delta.x = -delta.x;
+            engine->camera.offset = Vector2Add(engine->camera.offset, delta);
+        }
     }
     if (engine->camera.zoom < 1.0f) engine->camera.zoom = 1.0f;
 
@@ -177,6 +206,7 @@ void app(void (*simulation)(Engine*))
     SetTargetFPS(60);
 
     Vectors v_ar = {0};
+    Object_Ar v_obj = {0};
 
     Engine engine = (Engine) {
         .is_running = false,
@@ -188,7 +218,10 @@ void app(void (*simulation)(Engine*))
         .is_mouse_on_input = false,
         .input_count = 0,
         .v_ar = &v_ar,
-        .should_close = false
+        .v_obj = &v_obj,
+        .should_close = false,
+        .gravity_on = true,
+
     };
     strcpy(engine.input_chars, DEFAULT_INPUT_STR);
 
@@ -196,6 +229,13 @@ void app(void (*simulation)(Engine*))
     engine.camera.zoom = DEFAULT_ZOOM;
 
     simulation(&engine);
+
+    for (size_t i = 0; i < v_obj.count; ++i) {
+        Object *obj            = &(v_obj.items[i]);
+        obj->original_pos      = obj->pos;
+        obj->original_speed    = obj->speed;
+        obj->original_velocity = obj->velocity;
+    }
 
     while (!engine.should_close) {
         engine.should_close = WindowShouldClose();
@@ -224,20 +264,31 @@ void app(void (*simulation)(Engine*))
 
 
         if (engine.is_running) {
-            engine.time += (GetFrameTime() * engine.time_speed);
-            v_ar.items[0].dir += 0.01f * engine.time_speed;
-            v_ar.items[0].end_pos = vec2_endpoints(v_ar.items[0]);
+            float frame_time = GetFrameTime() * engine.time_speed;
+
+            engine.time += frame_time;
+            /* v_ar.items[0].dir += 0.01f * engine.time_speed; */
+            /* v_ar.items[0].end_pos = vec2_endpoints(v_ar.items[0]); */
             // v1.dir += 0.05f;
             /* v_ar.items[2] = vec_add(v_ar.items[0], v_ar.items[1], RAYWHITE); */
-            for (size_t i = 0; i < v_ar.count; ++i) {
-                if (v_ar.items[i].time_move <= 0.0f) {
-                    v_ar.items[i].is_moving = false;
+            /* for (size_t i = 0; i < v_ar.count; ++i) { */
+            /*     if (v_ar.items[i].time_move <= 0.0f) { */
+            /*         v_ar.items[i].is_moving = false; */
+            /*     } */
+            /*     if (v_ar.items[i].is_moving) { */
+            /*         float frame_time = GetFrameTime(); */
+            /*         v_ar.items[i].time_move -= frame_time; */
+            /*         v_ar.items[i].start_pos = Vector2Add(v_ar.items[i].start_pos, Vector2Scale(v_ar.items[i].move_increment, frame_time)); */
+            /*     } */
+            /* } */
+            for (size_t i = 0; i < v_obj.count; ++i) {
+                Object *obj = &(v_obj.items[i]);
+                if (engine.gravity_on) {
+                    obj->velocity.y += (frame_time * -GRAVITY_CONSTANT);
                 }
-                if (v_ar.items[i].is_moving) {
-                    float frame_time = GetFrameTime();
-                    v_ar.items[i].time_move -= frame_time;
-                    v_ar.items[i].start_pos = Vector2Add(v_ar.items[i].start_pos, Vector2Scale(v_ar.items[i].move_increment, frame_time));
-                }
+                obj->pos.y += (obj->velocity.y*frame_time);
+                obj->pos.x += (obj->velocity.x*frame_time);
+                if (obj->pos.y <= 0) engine.is_running = false;
             }
         }
 
@@ -247,10 +298,24 @@ void app(void (*simulation)(Engine*))
             draw_grid(engine);
 
 
-            if (1)
+            if (0)
             { // vectors
                 for (size_t i = 0; i < v_ar.count; ++i) {
                     draw_vector(v_ar.items[i], &engine); 
+                }
+            }
+
+            if (1)
+            { // objects
+                for (size_t i = 0; i < v_obj.count; ++i) {
+                    Object obj = v_obj.items[i];
+                    Vector2 pos = cartesian_to_screen(obj.pos, &engine);
+                    switch (obj.kind) {
+                        case CIRCLE: {
+                            DrawCircleV(pos, obj.size, obj.color);
+                        } break;
+                        case SQUARE: assert(false && "Not implemented");
+                    }
                 }
             }
 
@@ -273,12 +338,12 @@ void app(void (*simulation)(Engine*))
                 }
             }
 
-            Vector2 mouse_pos = GetMousePosition();
-            Vector2 pos = screen_to_cartesian(mouse_pos, engine.cart, engine.camera);
-            DrawText(TextFormat("(%.1f, %.1f)", pos.x, pos.y), mouse_pos.x, mouse_pos.y-30, 18, RAYWHITE);
+            /* Vector2 mouse_pos = GetMousePosition(); */
+            /* Vector2 pos = screen_to_cartesian(mouse_pos, engine.cart, engine.camera); */
+            /* DrawText(TextFormat("(%.1f, %.1f)", pos.x, pos.y), mouse_pos.x, mouse_pos.y-30, 18, RAYWHITE); */
 
-            for (size_t i = 0; i < engine.v_ar->count; ++i) {
-                Vec2 v = engine.v_ar->items[i];
+            for (size_t i = 0; i < v_ar.count; ++i) {
+                Vec2 v = v_ar.items[i];
                 Vector2 start_pos = cartesian_to_screen(v.start_pos, &engine);
                 Vector2 end_pos = cartesian_to_screen(v.end_pos, &engine);
                 int threshold = 30*engine.camera.zoom;
@@ -288,10 +353,24 @@ void app(void (*simulation)(Engine*))
                     min(start_pos.y, end_pos.y) - pad,
                     fabsf(end_pos.x - start_pos.x) + pad*2,
                     fabsf(end_pos.y - start_pos.y) + pad*2 };
-                if (CheckCollisionPointLine(mouse_pos, start_pos, end_pos, threshold)) {
+                if (CheckCollisionPointLine(GetMousePosition(), start_pos, end_pos, threshold)) {
                     DrawRectangleLinesEx(v_rec, 1.0f, v.color);
                     break;
                 }
+            }
+            if (engine.obj_dragging != NULL) {
+                const Object obj = *(engine.obj_dragging);
+                const float pad = 15.0f;
+                Vector2 pos = cartesian_to_screen(obj.pos, &engine);
+                Rectangle v_rec = (Rectangle) { 
+                    pos.x - pad*2,
+                    pos.y - pad*2,
+                    pad*4,
+                    pad*4
+                };
+                DrawRectangleLinesEx(v_rec, 1.0f, obj.color);
+                Vector2 mouse_pos = GetMousePosition();
+                DrawLineEx(pos, mouse_pos, 2, obj.color);
             }
 
             // DrawFPS(5, 5);

@@ -9,10 +9,21 @@
 
 void simulation(Engine *engine)
 {
-    Vec2 v0 = new_vector((Vector2) { 0, 0 }, sqrtf(50.0f),  -PI/4.0f, GREEN, "v0");
-    Vec2 v1 = new_vector((Vector2) { 2, -2 }, sqrtf(70.0f),  -PI/3.0f, BLUE, "v0");
-    da_append(engine->v_ar, v0);
-    da_append(engine->v_ar, v1);
+    /* Object obj1 = {0}; */
+    /* obj1.pos = (Vector2) { 0, 0 }; */
+    /* obj1.size = 10; */
+    /* obj1.color = RAYWHITE; */
+    /* obj1.velocity.y = 20.0f; */
+    /* obj1.velocity.x = 5.0f; */
+    /* da_append(engine->v_obj, obj1); */
+
+    Object obj2 = {0};
+    obj2.pos = (Vector2) { 0, 0 };
+    obj2.size = 10;
+    obj2.color = RED;
+    obj2.velocity.y = 20.0f;
+    obj2.velocity.x = 3.0f;
+    da_append(engine->v_obj, obj2);
 }
 
 int main()
